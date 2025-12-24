@@ -1,9 +1,11 @@
-const express = require("express"); // เรียกใช้ express
-const cors = require("cors");       // เรียกใช้ cors
+const express = require("express");
+const cors = require("cors");
+
 const app = express();
 const PORT = 3001;
 
-app.use(cors()); // เปิดให้ frontend เรียก server ได้
+app.use(cors());
+app.use(express.json());
 
 // Mock data - คะแนนเลือกตั้ง
 const votes = [
@@ -12,12 +14,16 @@ const votes = [
   { candidate: "สิทธา", votes: 110 }
 ];
 
-// API ส่งคะแนนเลือกตั้ง
-app.get("/api/votes", (req, res) => {
-  res.json(votes); // ส่ง JSON กลับไป frontend
+// Route แสดงข้อความ / (optional)
+app.get("/", (req, res) => {
+  res.send("Backend server is running!");
 });
 
-// เริ่ม server
+// API ส่งคะแนนเลือกตั้ง
+app.get("/api/votes", (req, res) => {
+  res.json(votes);
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
