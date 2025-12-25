@@ -8,4 +8,5 @@ Run Backend
 1. cd vote-webapp
 2. cd backend
 3. npm install dotenv
-4. npm run dev
+4. Add .env file
+5. npm run dev
