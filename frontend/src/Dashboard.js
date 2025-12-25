@@ -1,23 +1,16 @@
 import React, { useEffect, useState } from "react";
+import Sidebar from "./components/sidebar";
+import Layout from "./components/Layout";
 import { Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   BarElement,
-  Title,
   Tooltip,
-  Legend,
 } from "chart.js";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend
-);
+ChartJS.register(CategoryScale, LinearScale, BarElement, Tooltip);
 
 function Dashboard() {
   const [candidates, setCandidates] = useState([]);
@@ -25,21 +18,19 @@ function Dashboard() {
   useEffect(() => {
     fetch("http://localhost:8000/candidates")
       .then(res => res.json())
-      .then(data => setCandidates(data))
-      .catch(err => console.error(err));
+      .then(data => setCandidates(data));
   }, []);
 
-  // เรียงคะแนน
   const sorted = [...candidates].sort((a, b) => b.votes - a.votes);
 
   const chartData = {
-    labels: sorted.map(c => c.name),
+    labels: sorted.map(c => c.votes),
     datasets: [
       {
-        label: "คะแนนโหวต",
         data: sorted.map(c => c.votes),
-        backgroundColor: "rgba(99, 102, 241, 0.7)",
-        borderRadius: 6,
+        backgroundColor: "#27AE60",
+        borderRadius: 10,
+        barThickness: 60,
       },
     ],
   };
@@ -73,60 +64,55 @@ function Dashboard() {
   };
 
   return (
-    <div>
-      <h1 style={{ textAlign: "center" }}>คะแนนโหวต</h1>
+        <Layout>
 
-      {/* กราฟ */}
-      <div style={{ width: "650px", height: "360px", margin: "0 auto" }}>
-        <Bar data={chartData} options={chartOptions} />
-      </div>
+    <div className="flex min-h-screen bg-slate-100">
+      
+      
 
-      <hr />
+      {/* Content */}
+      <main className="flex-1 p-8">
+        <h1 className="text-2xl font-semibold text-center mb-6">
+          ผลคะแนนการเลือกตั้ง
+        </h1>
 
-      {/* การ์ดผู้สมัคร */}
-      <div
-        style={{
-          display: "flex",
-          gap: "14px",
-          justifyContent: "center",
-          flexWrap: "wrap",
-        }}
-      >
-        {sorted.map((c, index) => (
-          <div
-            key={c._id}
-            style={{
-              width: "200px",
-              height: "140px",
-              border: "1px solid #ccc",
-              padding: "12px",
-              borderRadius: "10px",
-              textAlign: "center",
-              background: index === 0 ? "#fff7ed" : "#fafafa",
-              borderColor: index === 0 ? "#f59e0b" : "#ccc",
-            }}
-          >
-            <h4 style={{ margin: "4px 0" }}>เบอร์ {c.candidateId}</h4>
+        {/* Chart */}
+        <div className="bg-slate-50 rounded-xl p-5 h-[350px] max-w-3xl mx-auto">
+          <Bar data={chartData} options={chartOptions} />
+        </div>
+
+        {/* Ranking */}
+        <div className="flex justify-center gap-6 mt-8 flex-wrap">
+          {sorted.map((c, index) => (
             <div
-              style={{
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                fontWeight: 500,
-              }}
+              key={c._id}
+              className="bg-white w-56 rounded-xl shadow"
             >
-              {c.name}
+              <div className="bg-emerald-600 text-white text-center py-2 rounded-t-xl font-medium">
+                อันดับ {index + 1}
+              </div>
+
+              <div className="flex items-center gap-3 p-4">
+                <img
+                  src="https://cdn-icons-png.flaticon.com/512/2922/2922510.png"
+                  className="w-10 h-10"
+                />
+                <div>
+                  <div className="font-semibold">{c.name}</div>
+                  <div className="text-sm text-gray-500">
+                    เบอร์ {c.candidateId}
+                  </div>
+                  <div className="text-green-600 font-bold">
+                    {c.votes} คะแนน
+                  </div>
+                </div>
+              </div>
             </div>
-            <div style={{ marginTop: "8px", fontWeight: "bold" }}>
-              {c.votes} คะแนน
-            </div>
-            {index === 0 && (
-              <div style={{ color: "#f59e0b", fontSize: "12px" }}>🏆 อันดับ 1</div>
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </main> 
     </div>
+      </Layout>
   );
 }
 

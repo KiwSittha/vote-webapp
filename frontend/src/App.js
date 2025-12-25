@@ -1,11 +1,21 @@
-import React from 'react';
-import Dashboard from './Dashboard';
+import React from "react";
+import { Routes, Route } from "react-router-dom";
+
+import Login from "./Login";
+import Register from "./Register";
+import Dashboard from "./Dashboard";
+import VerifyEmail from "./VerifyEmail";
+import Home from "./Home";
 
 function App() {
   return (
-    <div>
-      <Dashboard />
-    </div>
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/verify-email/:token" element={<VerifyEmail />} />
+    </Routes>
   );
 }
 
