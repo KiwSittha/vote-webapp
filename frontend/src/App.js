@@ -17,7 +17,6 @@ function App() {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/verify-email/:token" element={<VerifyEmail />} />
       <Route path="/candidates" element={<Candidates />} />
-      <Route path="/vote" element={<Candidates />} />
     </Routes>
   );
 }
