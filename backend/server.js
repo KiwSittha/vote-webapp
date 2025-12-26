@@ -124,7 +124,7 @@ app.get("/verify-email/:token", async (req, res) => {
 // =======================
 app.post("/login", async (req, res) => {
   try {
-    let { email} = req.body;
+    let { email, loginPassword } = req.body;
 
     console.log("📥 LOGIN REQUEST:", email);
 
