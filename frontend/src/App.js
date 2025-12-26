@@ -6,6 +6,7 @@ import Register from "./Register";
 import Dashboard from "./Dashboard";
 import VerifyEmail from "./VerifyEmail";
 import Home from "./Home";
+import Candidates from "./Candidates"; 
 
 function App() {
   return (
@@ -15,6 +16,8 @@ function App() {
       <Route path="/register" element={<Register />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/verify-email/:token" element={<VerifyEmail />} />
+      <Route path="/candidates" element={<Candidates />} />
+      <Route path="/vote" element={<Candidates />} />
     </Routes>
   );
 }
