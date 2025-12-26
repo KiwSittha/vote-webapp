@@ -9,38 +9,59 @@ export default function Login() {
   const [error, setError] = useState("");
 
   const handleLogin = async () => {
-    try {
-        const res = await fetch("http://localhost:8000/login", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-            email,
-            loginPassword: password,
-        }),
-        });
+  setError("");
 
-        const data = await res.json();
+  try {
+    const res = await fetch("http://localhost:8000/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        loginPassword: password,
+      }),
+    });
 
-        if (!res.ok) {
-        setError(data.message || "เข้าสู่ระบบไม่สำเร็จ");
-        return;
-        }
+    const data = await res.json();
 
-        // ✅ เก็บ token
-        localStorage.setItem("token", data.token);
-
-        // ✅ เก็บ user (สำคัญมาก)
-        localStorage.setItem("user", JSON.stringify(data.user));
-
-        // ✅ ไปหน้า Dashboard
-        navigate("/");
-
-    } catch (err) {
-        setError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+    // ❌ ไม่พบผู้ใช้ในฐานข้อมูล
+    if (res.status === 404) {
+      setError("ไม่พบอีเมลนี้ในระบบ");
+      return;
     }
-    };
+
+    // ❌ ยังไม่ยืนยันอีเมล
+    if (res.status === 403) {
+      setError("กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ");
+      return;
+    }
+
+    // ❌ รหัสผ่านผิด
+    if (res.status === 401) {
+      setError("รหัสผ่านไม่ถูกต้อง");
+      return;
+    }
+
+    if (!res.ok) {
+      setError("เข้าสู่ระบบไม่สำเร็จ");
+      return;
+    }
+
+    // ✅ เก็บ token
+    localStorage.setItem("token", data.token);
+
+    // ✅ เก็บ user
+    localStorage.setItem("user", JSON.stringify(data.user));
+
+    // ✅ ไปหน้า Home
+    navigate("/");
+
+  } catch (err) {
+    setError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+  }
+};
+
 
 
   return (

@@ -14,15 +14,45 @@ function Register() {
   const [error, setError] = useState("");
 
   const handleChange = (e) => {
+    const { name, value } = e.target;
+
+    // บังคับ PIN เป็นตัวเลขเท่านั้น
+    if (name === "votePin" && !/^\d*$/.test(value)) return;
+
     setForm({
       ...form,
-      [e.target.name]: e.target.value,
+      [name]: value,
     });
+  };
+
+  // =====================
+  // Validate form
+  // =====================
+  const validateForm = () => {
+    // Password: อย่างน้อย 8 ตัว + A-Z + a-z
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z]).{8,}$/;
+
+    if (!passwordRegex.test(form.loginPassword)) {
+      return "รหัสผ่านต้องมีอย่างน้อย 8 ตัว และมี A-Z และ a-z";
+    }
+
+    // PIN: ตัวเลข 6 หลัก
+    if (!/^\d{6}$/.test(form.votePin)) {
+      return "รหัสโหวตต้องเป็นตัวเลข 6 หลักเท่านั้น";
+    }
+
+    return "";
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
 
     try {
       const res = await fetch("http://localhost:8000/register/users", {
@@ -40,9 +70,9 @@ function Register() {
         return;
       }
 
-      alert("สมัครสมาชิกสำเร็จ");
+      alert("สมัครสมาชิกสำเร็จ กรุณายืนยันอีเมล");
       navigate("/login");
-    } catch (err) {
+    } catch {
       setError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
     }
   };
@@ -96,7 +126,7 @@ function Register() {
         <input
           name="loginPassword"
           type="password"
-          placeholder="รหัสผ่าน (มี A-Z และ a-z)"
+          placeholder="รหัสผ่าน (อย่างน้อย 8 ตัว มี A-Z และ a-z)"
           value={form.loginPassword}
           onChange={handleChange}
           className="w-full border px-3 py-2 mb-3 rounded"
@@ -107,9 +137,10 @@ function Register() {
         <input
           name="votePin"
           type="text"
-          placeholder="รหัสโหวต 6 หลัก"
+          placeholder="รหัสโหวต 6 หลัก (ตัวเลขเท่านั้น)"
           value={form.votePin}
           onChange={handleChange}
+          maxLength={6}
           className="w-full border px-3 py-2 mb-4 rounded"
           required
         />
