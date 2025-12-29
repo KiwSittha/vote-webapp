@@ -258,6 +258,44 @@ app.post("/vote", async (req, res) => {
   }
 });
 
+app.delete("/admin/delete-user/:id", async (req, res) => {
+  try {
+    const user = await db.collection("users").findOne({
+      _id: new ObjectId(req.params.id),
+    });
+
+    if (!user) {
+      return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+    }
+
+    // ถ้าเคยโหวต → ลดคะแนน
+    if (user.hasVoted && user.votedCandidate) {
+      await db.collection("candidates").updateOne(
+        { candidateId: user.votedCandidate },
+        { $inc: { votes: -1 } }
+      );
+    }
+
+    // ลบ user
+    await db.collection("users").deleteOne({ _id: user._id });
+
+    // ส่งคะแนนใหม่ให้ Dashboard
+    const updatedCandidates = await db
+      .collection("candidates")
+      .find({})
+      .sort({ votes: -1 })
+      .toArray();
+
+    io.emit("voteUpdated", updatedCandidates);
+
+    res.json({ message: "ลบผู้โหวตและอัปเดตคะแนนเรียบร้อย" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
 // =======================
 const PORT = process.env.PORT || 8000;
 server.listen(PORT, () => {
