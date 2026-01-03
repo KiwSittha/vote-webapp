@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Swal from "sweetalert2"; 
-import Layout from "../components/Layout"; // ✅ เช็ค path ให้ถูกนะครับ (ปกติถ้าไฟล์อยู่ใน pages ต้องถอย 1 ชั้นไป components)
+import Layout from "./components/Layout"; // ✅ เช็ค path ให้ถูกนะครับ (ปกติถ้าไฟล์อยู่ใน pages ต้องถอย 1 ชั้นไป components)
 
 export default function Vote() {
   const [candidates, setCandidates] = useState([]);
