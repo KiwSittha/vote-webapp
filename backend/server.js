@@ -77,17 +77,14 @@ connectDB();
 // Mail Configuration (Brevo Port 2525 Fix)
 // =======================
 const transporter = nodemailer.createTransport({
-  host: "185.107.232.161",  // ใช้ IP ตรงๆ ที่เราแก้เมื่อกี้ (หรือจะลอง smtp-relay.brevo.com ก็ได้ถ้าบน Render)
-  port: 2525,               // 🔥 เปลี่ยนจาก 587 เป็น 2525 (พระเอกของเรา)
-  secure: false,            // Port 2525 ใช้ secure: false เหมือน 587
+  host: "185.107.232.161",
+  port: 465,             // ลองเปลี่ยนเป็น 465
+  secure: true,          // ⚠️ ต้องแก้เป็น true
   auth: {
-    user: process.env.EMAIL_USER, 
-    pass: process.env.EMAIL_PASS, 
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
-  // เพิ่ม Timeout ให้ยาวขึ้นอีกนิด
-  connectionTimeout: 20000, 
-  logger: true,
-  debug: true
+  // ...
 });
 
 // 🔥 [DEBUG] ตรวจสอบการเชื่อมต่อ Gmail ทันทีที่เริ่ม Server
