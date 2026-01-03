@@ -20,6 +20,9 @@ ChartJS.defaults.font.family = "'Kanit', sans-serif";
 ChartJS.defaults.color = "#64748b";
 
 function Dashboard() {
+  useEffect(() => {
+    document.title = "ผลการเลือกตั้ง | KUVote";
+  }, []);
   const [candidates, setCandidates] = useState([]);
   const [voteSummary, setVoteSummary] = useState(null);
   const [page, setPage] = useState(0);

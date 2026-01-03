@@ -2,6 +2,9 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 
 function VerifyEmail() {
+  useEffect(() => {
+      document.title = "ยืนยันอีเมล | KUVote";
+    }, []);
   const { token } = useParams();
   const navigate = useNavigate();
   const [status, setStatus] = useState("loading"); // loading | success | error

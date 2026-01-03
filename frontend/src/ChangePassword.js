@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState,useEffect } from "react";
 import Swal from "sweetalert2";
 import Layout from "../components/Layout";
 
 export default function ChangePassword() {
+  useEffect(() => {
+    document.title = "เปลี่ยนรหัสผ่าน | KUVote";
+  }, []);
   const [formData, setFormData] = useState({
     currentPassword: "",
     newPassword: "",

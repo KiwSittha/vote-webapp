@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback } from "react";
 import Layout from "./components/Layout";
 
 function Candidates() {
+  useEffect(() => {
+      document.title = "ผู้สมัคร | KUVote";
+  }, []);
   const [candidates, setCandidates] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showPolicyModal, setShowPolicyModal] = useState(false);

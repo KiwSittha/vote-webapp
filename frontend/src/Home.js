@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import Layout from "./components/Layout";
 
 export default function Home() {
+  useEffect(() => {
+    document.title = "หน้าหลัก | KUVote";
+  }, []);
   const [timeLeft, setTimeLeft] = useState({ days: 0, hours: 0, minutes: 0, seconds: 0 });
   const [status, setStatus] = useState("normal");
 

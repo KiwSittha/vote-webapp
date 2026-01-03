@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState , useEffect} from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import Swal from "sweetalert2";
 
 export default function ResetPassword() {
+  useEffect(() => {
+      document.title = "ตั้งรหัสผ่านใหม่ | KUVote";
+    }, []);  
   const { id, token } = useParams(); // รับค่าจาก URL
   const navigate = useNavigate();
   

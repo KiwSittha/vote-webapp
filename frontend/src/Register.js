@@ -1,7 +1,10 @@
-import React, { useState } from "react";
+import { useState,useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 
 function Register() {
+  useEffect(() => {
+    document.title = "ลงทะเบียนใหม่ | KUVote";
+  }, []);
   const navigate = useNavigate();
 
   const [form, setForm] = useState({

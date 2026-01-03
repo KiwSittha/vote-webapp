@@ -3,7 +3,7 @@ import { useState,useEffect } from "react";
 
 export default function Login() {
   useEffect(() => {
-    document.title = "เข้าสู่ระบบ | KUVote"; // 2. กำหนดชื่อที่ต้องการ
+    document.title = "เข้าสู่ระบบ | KUVote";
   }, []);
   const navigate = useNavigate();
 

@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState , useEffect} from "react";
 import { Link } from "react-router-dom";
 import Swal from "sweetalert2";
 
 export default function ForgotPassword() {
+  useEffect(() => {
+      document.title = "ลืมรหัสผ่าน | KUVote";
+    }, []);  
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
 
