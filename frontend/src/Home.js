@@ -7,7 +7,7 @@ export default function Home() {
   const [status, setStatus] = useState("normal");
 
   // ✅ 1. กำหนดวันหมดเขต
-  const TARGET_ISO_DATE = "2026-01-01T16:00:00"; 
+  const TARGET_ISO_DATE = "2026-04-01T16:00:00"; 
   
   // ✅ 2. แปลงเป็นรูปแบบภาษาไทย
   const targetDateObj = new Date(TARGET_ISO_DATE);
