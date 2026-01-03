@@ -1,4 +1,4 @@
-console.log("🔥 SERVER STARTED: KUVote System (API Mode with Audit Log) 🔥");
+console.log("🔥 SERVER STARTED: KUVote System (Final Secure Mode) 🔥");
 require("dotenv").config();
 
 const express = require("express");
@@ -24,84 +24,32 @@ app.use(express.json());
 const client = new MongoClient(process.env.MONGO_URI);
 let db;
 
-// ✅ ฟังก์ชันช่วยบันทึก Log (Audit Log Helper)
+// ✅ Helper: บันทึก Log
 async function saveLog(action, email, req, details = {}) {
   try {
-    if (!db) return; // ถ้า DB ยังไม่ต่อ ก็ข้ามไป
+    if (!db) return;
 
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "Unknown";
     const userAgent = req.headers['user-agent'] || "Unknown";
 
     await db.collection("audit_logs").insertOne({
-      action: action,       // ชื่อเหตุการณ์ เช่น LOGIN, VOTE
-      email: email,         // ใครทำ
-      ip: ip,               // ไอพีอะไร
-      userAgent: userAgent, // ใช้อุปกรณ์อะไร
-      details: details,     // รายละเอียดเพิ่มเติม
-      timestamp: new Date() // เวลาที่เกิดเหตุ
+      action,
+      email,
+      ip,
+      userAgent,
+      details,
+      timestamp: new Date()
     });
 
-    console.log(`📝 [LOG SAVED] ${action}: ${email}`);
+    console.log(`📝 [LOG] ${action}: ${email}`);
   } catch (err) {
-    console.error("❌ Failed to save log:", err.message);
-    // ไม่ throw error เพื่อไม่ให้กระทบการทำงานหลัก
+    console.error("❌ Save log failed:", err.message);
   }
 }
 
-async function ensureTTLIndex() {
-  try {
-    const collection = db.collection("users");
-    const indexes = await collection.indexes();
-
-    const ttlIndex = indexes.find(
-      (i) =>
-        i.name === "createdAt_1" &&
-        i.partialFilterExpression?.isVerified === false
-    );
-
-    if (ttlIndex) {
-      if (ttlIndex.expireAfterSeconds !== 600) {
-        await collection.dropIndex("createdAt_1");
-        console.log("🗑 Dropped old TTL index");
-      } else {
-        console.log("✅ TTL index status: OK");
-        return;
-      }
-    }
-
-    await collection.createIndex(
-      { createdAt: 1 },
-      {
-        expireAfterSeconds: 600,
-        partialFilterExpression: { isVerified: false },
-      }
-    );
-    console.log("⏳ TTL index created (10 minutes expire)");
-  } catch (error) {
-    console.error("⚠️ TTL Index Error:", error.message);
-  }
-}
-
-async function connectDB() {
-  try {
-    await client.connect();
-    db = client.db("vote");
-    console.log("✅ MongoDB Connected Successfully");
-    await ensureTTLIndex();
-  } catch (err) {
-    console.error("❌ MongoDB Connection FAILED:", err.message);
-    process.exit(1); 
-  }
-}
-connectDB();
-
-// =======================
-// Mail Function (Brevo API)
-// =======================
+// ✅ Helper: ส่งอีเมล (Brevo API)
 async function sendEmailViaBrevo(toEmail, subject, htmlContent) {
-  if (!process.env.BREVO_API_KEY) {
-      throw new Error("❌ ไม่พบ BREVO_API_KEY ใน Environment Variables");
-  }
+  if (!process.env.BREVO_API_KEY) throw new Error("❌ Missing BREVO_API_KEY");
 
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
@@ -111,10 +59,7 @@ async function sendEmailViaBrevo(toEmail, subject, htmlContent) {
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      sender: { 
-        name: "KUVote System", 
-        email: process.env.EMAIL_USER || "no-reply@kuvote.com"
-      },
+      sender: { name: "KUVote System", email: process.env.EMAIL_USER || "no-reply@kuvote.com" },
       to: [{ email: toEmail }],
       subject: subject,
       htmlContent: htmlContent
@@ -123,39 +68,62 @@ async function sendEmailViaBrevo(toEmail, subject, htmlContent) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Brevo API Error: ${errorText}`);
+    throw new Error(`Brevo Error: ${errorText}`);
   }
-   
-  console.log("✅ [API SUCCESS] Email sent via Brevo API");
+  console.log("✅ [MAIL] Sent to:", toEmail);
 }
+
+// 🔐 Middleware: ตรวจสอบ Token (Security Check)
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) return res.status(401).json({ message: "Access Denied: No Token" });
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ message: "Invalid Token" });
+    req.user = user; // แนบข้อมูล user (มี userId, email) ไปใช้ต่อ
+    next();
+  });
+}
+
+// Setup DB & TTL Index
+async function connectDB() {
+  try {
+    await client.connect();
+    db = client.db("vote");
+    console.log("✅ MongoDB Connected");
+
+    // TTL Index (ลบ User ที่ไม่ยืนยันภายใน 10 นาที)
+    const collection = db.collection("users");
+    await collection.createIndex(
+      { createdAt: 1 },
+      { expireAfterSeconds: 600, partialFilterExpression: { isVerified: false } }
+    );
+    console.log("⏳ TTL Index Verified");
+  } catch (err) {
+    console.error("❌ MongoDB Error:", err.message);
+    process.exit(1); 
+  }
+}
+connectDB();
 
 // =======================
 // Routes
 // =======================
 
-app.get("/", (req, res) => {
-  res.send("🚀 KUVote API Server is Running (API Mode)!");
-});
+app.get("/", (req, res) => res.send("🚀 KUVote API is Running!"));
+app.get("/healthz", (req, res) => res.status(200).send("OK"));
 
-app.get("/healthz", (req, res) => {
-    res.status(200).send("OK");
-});
-
-// =======================
-// 1. Register Users
-// =======================
+// 1. Register
 app.post("/register/users", async (req, res) => {
   let insertedId = null; 
-
   try {
     const { email, faculty, loginPassword, votePin } = req.body;
-    console.log(`📥 [REGISTER] Request for: ${email}`);
 
     const existingUser = await db.collection("users").findOne({ email });
     if (existingUser) {
-        if (!existingUser.isVerified) {
-             return res.status(409).json({ message: "อีเมลนี้ลงทะเบียนแล้ว แต่ยังไม่ยืนยันตัวตน" });
-        }
+        if (!existingUser.isVerified) return res.status(409).json({ message: "รอการยืนยันอีเมล (หรือรอ 10 นาที)" });
         return res.status(409).json({ message: "อีเมลนี้ถูกใช้งานแล้ว" });
     }
 
@@ -163,339 +131,178 @@ app.post("/register/users", async (req, res) => {
     const hashedPin = await bcrypt.hash(votePin, 10);
 
     const result = await db.collection("users").insertOne({
-      email,
-      faculty,
-      loginPassword: hashedPassword,
-      votePin: hashedPin,
-      isVerified: false,
-      hasVoted: false,
-      createdAt: new Date(),
+      email, faculty, loginPassword: hashedPassword, votePin: hashedPin,
+      isVerified: false, hasVoted: false, createdAt: new Date(),
     });
-
     insertedId = result.insertedId;
-    console.log(`✅ [DB] Inserted User ID: ${insertedId}`);
 
-    // ✅ Log: บันทึกการสมัครสมาชิกใหม่
-    saveLog("REGISTER_NEW", email, req, { faculty: faculty });
+    saveLog("REGISTER_NEW", email, req, { faculty });
 
-    const verifyToken = jwt.sign(
-      { userId: insertedId },
-      process.env.JWT_SECRET,
-      { expiresIn: "10m" }
-    );
-    
+    const verifyToken = jwt.sign({ userId: insertedId }, process.env.JWT_SECRET, { expiresIn: "10m" });
     const frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, "") : "http://localhost:3000";
-    const verifyLink = `${frontendUrl}/verify-email/${verifyToken}`;
+    
+    await sendEmailViaBrevo(email, "ยืนยันอีเมล - KUVote", `
+      <h2>ยืนยันการลงทะเบียน</h2>
+      <p>กดปุ่มเพื่อยืนยัน (หมดอายุใน 10 นาที):</p>
+      <a href="${frontendUrl}/verify-email/${verifyToken}">ยืนยันอีเมล</a>
+    `);
 
-    const emailHtml = `
-      <div style="font-family: sans-serif; background-color: #f4f4f5; padding: 40px;">
-        <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-          <div style="background-color: #10B981; padding: 20px; text-align: center; color: white;">
-            <h1>KU Vote System</h1>
-          </div>
-          <div style="padding: 30px; text-align: center;">
-            <h2>ยืนยันการลงทะเบียน</h2>
-            <p>กรุณากดปุ่มด้านล่างเพื่อยืนยันอีเมลของคุณ (ลิงก์หมดอายุใน 10 นาที)</p>
-            <a href="${verifyLink}" style="display: inline-block; background-color: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0;">ยืนยันอีเมลทันที</a>
-            <p style="font-size: 12px; color: #666; margin-top: 20px;">หากปุ่มไม่ทำงาน: ${verifyLink}</p>
-          </div>
-        </div>
-      </div>
-    `;
-
-    console.log("⏳ [MAIL] Sending email via Brevo API...");
-    await sendEmailViaBrevo(email, "ยืนยันอีเมลของคุณ - KUVote", emailHtml);
-
-    res.status(201).json({ message: "สมัครสำเร็จ กรุณาตรวจสอบอีเมลเพื่อยืนยันตัวตน" });
-
+    res.status(201).json({ message: "สมัครสำเร็จ โปรดเช็คอีเมล" });
   } catch (err) {
-    console.error("❌ [REGISTER ERROR]:", err.message);
-
-    if (insertedId) {
-        console.log("🧹 [ROLLBACK] Deleting user due to failure...");
-        await db.collection("users").deleteOne({ _id: insertedId });
-        console.log("   -> User deleted.");
-    }
-
-    res.status(500).json({ 
-        error: "เกิดข้อผิดพลาดในการสมัครสมาชิก (ระบบส่งอีเมลขัดข้อง)",
-        details: err.message 
-    });
+    if (insertedId) await db.collection("users").deleteOne({ _id: insertedId });
+    res.status(500).json({ error: "สมัครไม่สำเร็จ", details: err.message });
   }
 });
 
-// =======================
 // 2. Verify Email
-// =======================
 app.get("/verify-email/:token", async (req, res) => {
   try {
     const decoded = jwt.verify(req.params.token, process.env.JWT_SECRET);
-
     const result = await db.collection("users").updateOne(
       { _id: new ObjectId(decoded.userId), isVerified: false },
       { $set: { isVerified: true } }
     );
 
-    if (result.matchedCount === 0) {
-      return res.status(400).send("<h1>❌ ไม่สำเร็จ</h1><p>บัญชีถูกยืนยันไปแล้ว หรือลิงก์หมดอายุ</p>");
-    }
+    if (result.matchedCount === 0) return res.status(400).send("<h1>ไม่สำเร็จ (ยืนยันไปแล้วหรือหมดอายุ)</h1>");
 
-    // ✅ Log: บันทึกการยืนยันอีเมลสำเร็จ (หา User เพื่อเอา email มา log)
     const user = await db.collection("users").findOne({ _id: new ObjectId(decoded.userId) });
     if(user) saveLog("EMAIL_VERIFIED", user.email, req);
 
-    res.send("<h1>🎉 ยืนยันสำเร็จ!</h1><p>กลับไปหน้า Login ได้เลย</p>");
+    res.send("<h1>🎉 ยืนยันสำเร็จ!</h1><p>ปิดหน้านี้แล้ว Login ได้เลย</p>");
   } catch (err) {
-    res.status(400).send("<h1>❌ ลิงก์ไม่ถูกต้อง หรือหมดอายุ</h1>");
+    res.status(400).send("<h1>ลิงก์ไม่ถูกต้อง หรือหมดอายุ</h1>");
   }
 });
 
-// =======================
 // 3. Login
-// =======================
 app.post("/login", async (req, res) => {
   try {
     let { email, loginPassword } = req.body;
     email = email?.trim().toLowerCase();
 
     const user = await db.collection("users").findOne({ email });
+    if (!user) return res.status(404).json({ message: "ไม่พบอีเมลนี้" });
+    if (!user.isVerified) return res.status(403).json({ message: "กรุณายืนยันอีเมลก่อน" });
 
-    if (!user) return res.status(404).json({ message: "ไม่พบอีเมลนี้ในระบบ" });
-
-    if (!user.isVerified) {
-      return res.status(403).json({ message: "กรุณายืนยันอีเมลก่อนเข้าสู่ระบบ" });
-    }
-
-    const isPasswordCorrect = await bcrypt.compare(loginPassword, user.loginPassword);
-    
-    if (!isPasswordCorrect) {
-        // ✅ Log: บันทึกความพยายามเข้าระบบผิดพลาด (ระวัง Brute Force)
+    const isMatch = await bcrypt.compare(loginPassword, user.loginPassword);
+    if (!isMatch) {
         saveLog("LOGIN_FAILED", email, req, { reason: "Wrong Password" });
         return res.status(401).json({ message: "รหัสผ่านไม่ถูกต้อง" });
     }
 
-    // ✅ Log: บันทึกการเข้าสู่ระบบสำเร็จ
     saveLog("LOGIN_SUCCESS", email, req, { faculty: user.faculty });
 
-    const token = jwt.sign(
-      { userId: user._id, email: user.email },
-      process.env.JWT_SECRET,
-      { expiresIn: "1d" }
-    );
-
-    res.json({
-      token,
-      user: {
-        email: user.email,
-        faculty: user.faculty,
-        hasVoted: user.hasVoted,
-      },
-    });
+    const token = jwt.sign({ userId: user._id, email: user.email }, process.env.JWT_SECRET, { expiresIn: "1d" });
+    res.json({ token, user: { email: user.email, faculty: user.faculty, hasVoted: user.hasVoted } });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// =======================
-// 4. Candidates & Voting
-// =======================
-async function getNextCandidateId() {
-  const result = await db.collection("counters").findOneAndUpdate(
-    { _id: "candidateId" },
-    { $inc: { seq: 1 } },
-    { upsert: true, returnDocument: "after" }
-  );
-  return result.value.seq;
-}
-
-// =======================
-// 5. Change Password
-// =======================
+// 4. Change Password
 app.put("/user/change-password", async (req, res) => {
   try {
     const authHeader = req.headers["authorization"];
-    const token = authHeader && authHeader.split(" ")[1]; // ดึง Bearer token
-
+    const token = authHeader && authHeader.split(" ")[1];
     if (!token) return res.status(401).json({ message: "No token provided" });
 
-    // 1. แกะ Token หา User ID
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userId = decoded.userId;
-
     const { currentPassword, newPassword } = req.body;
 
-    // 2. หา User ใน DB
-    const user = await db.collection("users").findOne({ _id: new ObjectId(userId) });
+    const user = await db.collection("users").findOne({ _id: new ObjectId(decoded.userId) });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // 3. เช็คว่า "รหัสผ่านเดิม" ถูกต้องไหม
     const isMatch = await bcrypt.compare(currentPassword, user.loginPassword);
     if (!isMatch) {
-      // ❌ Log: พยายามเปลี่ยนรหัสแต่ใส่รหัสเก่าผิด
-      saveLog("CHANGE_PASSWORD_FAILED", user.email, req, { reason: "Wrong current password" });
+      saveLog("CHANGE_PASS_FAILED", user.email, req);
       return res.status(400).json({ message: "รหัสผ่านปัจจุบันไม่ถูกต้อง" });
     }
 
-    // 4. แฮชรหัสผ่านใหม่
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    await db.collection("users").updateOne({ _id: new ObjectId(decoded.userId) }, { $set: { loginPassword: hashedNewPassword } });
 
-    // 5. อัปเดตลง DB
-    await db.collection("users").updateOne(
-      { _id: new ObjectId(userId) },
-      { $set: { loginPassword: hashedNewPassword } }
-    );
-
-    // ✅ Log: เปลี่ยนรหัสสำเร็จ
-    saveLog("CHANGE_PASSWORD_SUCCESS", user.email, req);
-
+    saveLog("CHANGE_PASS_SUCCESS", user.email, req);
     res.json({ message: "เปลี่ยนรหัสผ่านสำเร็จ" });
-
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// =======================
-// 6. Forgot Password (Request Link)
-// =======================
+// 5. Forgot Password (Updated Validation)
 app.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
 
-    // 1. ตรวจสอบรูปแบบอีเมล (Backend Validation)
+    // ตรวจสอบรูปแบบอีเมล
     if (!email || !email.trim().toLowerCase().endsWith("@ku.th")) {
         return res.status(400).json({ message: "กรุณาใช้อีเมลมหาวิทยาลัย (@ku.th) เท่านั้น" });
     }
 
-    // 2. ค้นหา User ในระบบ
     const user = await db.collection("users").findOne({ email: email.trim().toLowerCase() });
 
-    // ❌ ถ้าไม่เจอ ให้บอกไปเลยว่า "ไม่พบอีเมล" (ตามที่คุณต้องการ)
+    // ❌ ถ้าไม่เจอ แจ้ง Error เลย
     if (!user) {
-      // Log การพยายามขอรีเซ็ตผิดคน
-      saveLog("FORGOT_PASSWORD_FAILED", email, req, { reason: "User not found" });
+      saveLog("FORGOT_PASS_FAILED", email, req, { reason: "Not Found" });
       return res.status(404).json({ message: "ไม่พบอีเมลนี้ในระบบ กรุณาตรวจสอบความถูกต้อง" });
     }
 
-    // 3. สร้าง Token สำหรับรีเซ็ต (อายุ 15 นาที)
     const secret = process.env.JWT_SECRET + user.loginPassword;
     const token = jwt.sign({ userId: user._id, email: user.email }, secret, { expiresIn: "15m" });
-
-    // 4. สร้างลิงก์
+    
     const frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, "") : "http://localhost:3000";
     const resetLink = `${frontendUrl}/reset-password/${user._id}/${token}`;
 
-    // 5. HTML Email
-    const emailHtml = `
-      <div style="font-family: sans-serif; padding: 20px;">
-        <h2>รีเซ็ตรหัสผ่าน (Reset Password)</h2>
-        <p>คุณได้ทำการร้องขอเพื่อเปลี่ยนรหัสผ่านสำหรับบัญชี: ${user.email}</p>
-        <p>กรุณากดลิงก์ด้านล่างเพื่อตั้งรหัสผ่านใหม่ (ลิงก์มีอายุ 15 นาที):</p>
-        <a href="${resetLink}" style="background-color: #DC2626; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">ตั้งรหัสผ่านใหม่</a>
-        <p style="margin-top: 20px; color: #666; font-size: 12px;">หากคุณไม่ได้ทำรายการนี้ โปรดเพิกเฉยต่ออีเมลฉบับนี้</p>
-      </div>
-    `;
-
-    // 6. ส่งอีเมล
-    await sendEmailViaBrevo(user.email, "รีเซ็ตรหัสผ่าน - KUVote", emailHtml);
+    await sendEmailViaBrevo(user.email, "รีเซ็ตรหัสผ่าน - KUVote", `
+        <h2>ตั้งรหัสผ่านใหม่</h2>
+        <a href="${resetLink}">กดตรงนี้เพื่อตั้งรหัสใหม่</a>
+    `);
     
-    // Log สำเร็จ
-    saveLog("FORGOT_PASSWORD_REQUEST", user.email, req);
-
-    res.json({ message: "ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมลเรียบร้อยแล้ว" });
-
+    saveLog("FORGOT_PASS_REQ", user.email, req);
+    res.json({ message: "ส่งลิงก์รีเซ็ตรหัสผ่านเรียบร้อยแล้ว" });
   } catch (err) {
-    console.error("Forgot Password Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// =======================
-// 7. Reset Password (Set New Password)
-// =======================
+// 6. Reset Password
 app.post("/reset-password/:id/:token", async (req, res) => {
   const { id, token } = req.params;
   const { newPassword } = req.body;
 
   try {
-    // 1. เช็คว่า User มีจริงไหม
     const user = await db.collection("users").findOne({ _id: new ObjectId(id) });
     if (!user) return res.status(404).json({ message: "User not found" });
 
-    // 2. ตรวจสอบ Token (ต้องใช้ Secret เดียวกับตอนสร้าง คือมี password เก่าผสม)
     const secret = process.env.JWT_SECRET + user.loginPassword;
-    try {
-      jwt.verify(token, secret);
-    } catch (err) {
-      return res.status(400).json({ message: "ลิงก์หมดอายุ หรือไม่ถูกต้อง" });
-    }
+    try { jwt.verify(token, secret); } catch (err) { return res.status(400).json({ message: "ลิงก์หมดอายุ" }); }
 
-    // 3. เปลี่ยนรหัสผ่าน
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await db.collection("users").updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { loginPassword: hashedPassword } }
-    );
+    await db.collection("users").updateOne({ _id: new ObjectId(id) }, { $set: { loginPassword: hashedPassword } });
 
-    // Log
-    saveLog("RESET_PASSWORD_SUCCESS", user.email, req);
-
-    res.json({ message: "เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่" });
-
+    saveLog("RESET_PASS_SUCCESS", user.email, req);
+    res.json({ message: "เปลี่ยนรหัสผ่านสำเร็จ" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 // =======================
-// 7. Reset Password (Set New Password)
+// Candidate & Voting
 // =======================
-app.post("/reset-password/:id/:token", async (req, res) => {
-  const { id, token } = req.params;
-  const { newPassword } = req.body;
 
-  try {
-    // 1. เช็คว่า User มีจริงไหม
-    const user = await db.collection("users").findOne({ _id: new ObjectId(id) });
-    if (!user) return res.status(404).json({ message: "User not found" });
-
-    // 2. ตรวจสอบ Token (ต้องใช้ Secret เดียวกับตอนสร้าง คือมี password เก่าผสม)
-    const secret = process.env.JWT_SECRET + user.loginPassword;
-    try {
-      jwt.verify(token, secret);
-    } catch (err) {
-      return res.status(400).json({ message: "ลิงก์หมดอายุ หรือไม่ถูกต้อง" });
-    }
-
-    // 3. เปลี่ยนรหัสผ่าน
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await db.collection("users").updateOne(
-      { _id: new ObjectId(id) },
-      { $set: { loginPassword: hashedPassword } }
-    );
-
-    // Log
-    saveLog("RESET_PASSWORD_SUCCESS", user.email, req);
-
-    res.json({ message: "เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่" });
-
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+async function getNextCandidateId() {
+  const result = await db.collection("counters").findOneAndUpdate(
+    { _id: "candidateId" }, { $inc: { seq: 1 } }, { upsert: true, returnDocument: "after" }
+  );
+  return result.value.seq;
+}
 
 app.post("/candidate", async (req, res) => {
   try {
     const { name, faculty, position, policies } = req.body;
     const candidateId = await getNextCandidateId();
     await db.collection("candidates").insertOne({
-      candidateId,
-      name,
-      faculty,
-      position,
-      policies: policies || [],
-      votes: 0,
-      createdAt: new Date(),
+      candidateId, name, faculty, position, policies: policies || [], votes: 0, createdAt: new Date()
     });
     res.status(201).json({ message: "เพิ่มผู้สมัครสำเร็จ", candidateId });
   } catch (err) {
@@ -512,36 +319,32 @@ app.get("/candidates", async (req, res) => {
   }
 });
 
-app.post("/vote", async (req, res) => {
+// 🔥 VOTE ROUTE (Secure Mode) 🛡️
+// ใช้ authenticateToken เพื่อดึง email จาก Token แทน req.body
+app.post("/vote", authenticateToken, async (req, res) => {
   try {
-    const { email, votePin, candidateId } = req.body;
+    // ✅ ดึงอีเมลจาก Token ที่ยืนยันตัวตนแล้ว (ปลอดภัยกว่ารับจาก body)
+    const email = req.user.email;
+    const { votePin, candidateId } = req.body;
     
     const user = await db.collection("users").findOne({ email });
-    if (!user) return res.status(404).json({ message: "ไม่พบผู้ใช้" });
+    if (!user) return res.status(404).json({ message: "ไม่พบข้อมูลผู้ใช้" });
     if (user.hasVoted) return res.status(403).json({ message: "คุณใช้สิทธิ์ไปแล้ว" });
 
     const isPinCorrect = await bcrypt.compare(votePin, user.votePin);
     if (!isPinCorrect) {
-        // ✅ Log: บันทึกการใส่ PIN ผิด (อาจจะเป็นคนอื่นพยายามใช้สิทธิ์)
         saveLog("VOTE_FAILED_PIN", email, req, { candidateId });
-        return res.status(401).json({ message: "รหัสโหวตไม่ถูกต้อง" });
+        return res.status(401).json({ message: "รหัสโหวต (PIN) ไม่ถูกต้อง" });
     }
 
     const candidate = await db.collection("candidates").findOne({ candidateId });
     if (!candidate) return res.status(404).json({ message: "ไม่พบผู้สมัคร" });
 
-    await db.collection("users").updateOne(
-      { email },
-      { $set: { hasVoted: true, votedCandidate: candidateId } }
-    );
-    await db.collection("candidates").updateOne(
-      { candidateId },
-      { $inc: { votes: 1 } }
-    );
+    // Update DB
+    await db.collection("users").updateOne({ email }, { $set: { hasVoted: true, votedCandidate: candidateId } });
+    await db.collection("candidates").updateOne({ candidateId }, { $inc: { votes: 1 } });
 
-    // ✅ Log: บันทึกการโหวตสำเร็จ (หลักฐานสำคัญ)
     saveLog("VOTE_SUBMIT", email, req, { candidateId });
-
     res.json({ message: "โหวตสำเร็จ" });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -555,8 +358,7 @@ app.get("/stats/vote-summary", async (req, res) => {
       { $group: { _id: "$hasVoted", count: { $sum: 1 } } },
     ]).toArray();
 
-    let voted = 0;
-    let notVoted = 0;
+    let voted = 0, notVoted = 0;
     result.forEach((item) => {
       if (item._id === true) voted = item.count;
       if (item._id === false) notVoted = item.count;
@@ -568,24 +370,14 @@ app.get("/stats/vote-summary", async (req, res) => {
   }
 });
 
-// ✅ Route พิเศษสำหรับ Admin: ดู Log 100 รายการล่าสุด
 app.get("/admin/logs", async (req, res) => {
     try {
-        const logs = await db.collection("audit_logs")
-            .find({})
-            .sort({ timestamp: -1 })
-            .limit(100)
-            .toArray();
+        const logs = await db.collection("audit_logs").find({}).sort({ timestamp: -1 }).limit(100).toArray();
         res.json(logs);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 });
 
-// =======================
-// Start Server
-// =======================
 const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
