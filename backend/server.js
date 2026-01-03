@@ -77,16 +77,17 @@ connectDB();
 // Mail Configuration (Gmail)
 // =======================
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",  // ระบุ Host ตรงๆ
-  port: 587,               // ใช้ Port 587 (TLS) มาตรฐานกว่า
-  secure: false,           // true สำหรับ port 465, false สำหรับ 587
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false, // ต้องเป็น false สำหรับ port 587
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  tls: {
-    ciphers: 'SSLv3'       // ช่วยแก้ปัญหา Version ของ SSL บางกรณี
-  }
+  // 🔥 ลบ ciphers SSLv3 ออก เพราะมันเก่าเกินไป Google ไม่รับ
+  // แต่ใส่ debug: true เพื่อดู log ละเอียด
+  logger: true,
+  debug: true 
 });
 
 // 🔥 [DEBUG] ตรวจสอบการเชื่อมต่อ Gmail ทันทีที่เริ่ม Server
