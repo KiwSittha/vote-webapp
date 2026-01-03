@@ -1,4 +1,4 @@
-console.log("🔥 SERVER STARTED: KUVote System (API Mode) 🔥");
+console.log("🔥 SERVER STARTED: KUVote System (API Mode with Audit Log) 🔥");
 require("dotenv").config();
 
 const express = require("express");
@@ -6,7 +6,6 @@ const { MongoClient, ObjectId } = require("mongodb");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-// const nodemailer = require("nodemailer"); // ❌ ไม่ใช้แล้ว (Comment ออกหรือลบได้เลย)
 
 const app = express();
 
@@ -24,6 +23,30 @@ app.use(express.json());
 // =======================
 const client = new MongoClient(process.env.MONGO_URI);
 let db;
+
+// ✅ ฟังก์ชันช่วยบันทึก Log (Audit Log Helper)
+async function saveLog(action, email, req, details = {}) {
+  try {
+    if (!db) return; // ถ้า DB ยังไม่ต่อ ก็ข้ามไป
+
+    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || "Unknown";
+    const userAgent = req.headers['user-agent'] || "Unknown";
+
+    await db.collection("audit_logs").insertOne({
+      action: action,       // ชื่อเหตุการณ์ เช่น LOGIN, VOTE
+      email: email,         // ใครทำ
+      ip: ip,               // ไอพีอะไร
+      userAgent: userAgent, // ใช้อุปกรณ์อะไร
+      details: details,     // รายละเอียดเพิ่มเติม
+      timestamp: new Date() // เวลาที่เกิดเหตุ
+    });
+
+    console.log(`📝 [LOG SAVED] ${action}: ${email}`);
+  } catch (err) {
+    console.error("❌ Failed to save log:", err.message);
+    // ไม่ throw error เพื่อไม่ให้กระทบการทำงานหลัก
+  }
+}
 
 async function ensureTTLIndex() {
   try {
@@ -73,26 +96,24 @@ async function connectDB() {
 connectDB();
 
 // =======================
-// ✅ Mail Function (Brevo API) - ทางแก้ปัญหา Timeout
+// Mail Function (Brevo API)
 // =======================
 async function sendEmailViaBrevo(toEmail, subject, htmlContent) {
-  // เช็คว่ามี API Key หรือยัง
   if (!process.env.BREVO_API_KEY) {
       throw new Error("❌ ไม่พบ BREVO_API_KEY ใน Environment Variables");
   }
 
-  // ส่ง request ไปที่ Brevo API โดยตรง (ไม่ผ่าน SMTP Port)
   const response = await fetch("https://api.brevo.com/v3/smtp/email", {
     method: "POST",
     headers: {
       "accept": "application/json",
-      "api-key": process.env.BREVO_API_KEY, // ต้องตั้งค่าใน Render
+      "api-key": process.env.BREVO_API_KEY,
       "content-type": "application/json"
     },
     body: JSON.stringify({
       sender: { 
         name: "KUVote System", 
-        email: process.env.EMAIL_USER || "no-reply@kuvote.com" // ใช้อีเมลที่ยืนยันกับ Brevo
+        email: process.env.EMAIL_USER || "no-reply@kuvote.com"
       },
       to: [{ email: toEmail }],
       subject: subject,
@@ -104,7 +125,7 @@ async function sendEmailViaBrevo(toEmail, subject, htmlContent) {
     const errorText = await response.text();
     throw new Error(`Brevo API Error: ${errorText}`);
   }
-  
+   
   console.log("✅ [API SUCCESS] Email sent via Brevo API");
 }
 
@@ -116,7 +137,6 @@ app.get("/", (req, res) => {
   res.send("🚀 KUVote API Server is Running (API Mode)!");
 });
 
-// ✅ Health Check Route (สำหรับ Render)
 app.get("/healthz", (req, res) => {
     res.status(200).send("OK");
 });
@@ -131,20 +151,17 @@ app.post("/register/users", async (req, res) => {
     const { email, faculty, loginPassword, votePin } = req.body;
     console.log(`📥 [REGISTER] Request for: ${email}`);
 
-    // 1. ตรวจสอบ User ซ้ำ
     const existingUser = await db.collection("users").findOne({ email });
     if (existingUser) {
         if (!existingUser.isVerified) {
-             return res.status(409).json({ message: "อีเมลนี้ลงทะเบียนแล้ว แต่ยังไม่ยืนยันตัวตน (กรุณารอ 10 นาทีหรือตรวจสอบอีเมล)" });
+             return res.status(409).json({ message: "อีเมลนี้ลงทะเบียนแล้ว แต่ยังไม่ยืนยันตัวตน" });
         }
         return res.status(409).json({ message: "อีเมลนี้ถูกใช้งานแล้ว" });
     }
 
-    // 2. Hash Password
     const hashedPassword = await bcrypt.hash(loginPassword, 10);
     const hashedPin = await bcrypt.hash(votePin, 10);
 
-    // 3. Insert DB
     const result = await db.collection("users").insertOne({
       email,
       faculty,
@@ -158,18 +175,18 @@ app.post("/register/users", async (req, res) => {
     insertedId = result.insertedId;
     console.log(`✅ [DB] Inserted User ID: ${insertedId}`);
 
-    // 4. Generate Link
+    // ✅ Log: บันทึกการสมัครสมาชิกใหม่
+    saveLog("REGISTER_NEW", email, req, { faculty: faculty });
+
     const verifyToken = jwt.sign(
       { userId: insertedId },
       process.env.JWT_SECRET,
       { expiresIn: "10m" }
     );
     
-    // จัดการ URL ให้สวยงาม (เอา Slash ท้ายออก)
     const frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, "") : "http://localhost:3000";
     const verifyLink = `${frontendUrl}/verify-email/${verifyToken}`;
 
-    // 5. Prepare HTML
     const emailHtml = `
       <div style="font-family: sans-serif; background-color: #f4f4f5; padding: 40px;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
@@ -186,7 +203,6 @@ app.post("/register/users", async (req, res) => {
       </div>
     `;
 
-    // 6. 🔥 ส่งอีเมลด้วย API (แก้ปัญหา Timeout)
     console.log("⏳ [MAIL] Sending email via Brevo API...");
     await sendEmailViaBrevo(email, "ยืนยันอีเมลของคุณ - KUVote", emailHtml);
 
@@ -195,7 +211,6 @@ app.post("/register/users", async (req, res) => {
   } catch (err) {
     console.error("❌ [REGISTER ERROR]:", err.message);
 
-    // 🔥 Rollback System
     if (insertedId) {
         console.log("🧹 [ROLLBACK] Deleting user due to failure...");
         await db.collection("users").deleteOne({ _id: insertedId });
@@ -225,6 +240,10 @@ app.get("/verify-email/:token", async (req, res) => {
       return res.status(400).send("<h1>❌ ไม่สำเร็จ</h1><p>บัญชีถูกยืนยันไปแล้ว หรือลิงก์หมดอายุ</p>");
     }
 
+    // ✅ Log: บันทึกการยืนยันอีเมลสำเร็จ (หา User เพื่อเอา email มา log)
+    const user = await db.collection("users").findOne({ _id: new ObjectId(decoded.userId) });
+    if(user) saveLog("EMAIL_VERIFIED", user.email, req);
+
     res.send("<h1>🎉 ยืนยันสำเร็จ!</h1><p>กลับไปหน้า Login ได้เลย</p>");
   } catch (err) {
     res.status(400).send("<h1>❌ ลิงก์ไม่ถูกต้อง หรือหมดอายุ</h1>");
@@ -248,7 +267,15 @@ app.post("/login", async (req, res) => {
     }
 
     const isPasswordCorrect = await bcrypt.compare(loginPassword, user.loginPassword);
-    if (!isPasswordCorrect) return res.status(401).json({ message: "รหัสผ่านไม่ถูกต้อง" });
+    
+    if (!isPasswordCorrect) {
+        // ✅ Log: บันทึกความพยายามเข้าระบบผิดพลาด (ระวัง Brute Force)
+        saveLog("LOGIN_FAILED", email, req, { reason: "Wrong Password" });
+        return res.status(401).json({ message: "รหัสผ่านไม่ถูกต้อง" });
+    }
+
+    // ✅ Log: บันทึกการเข้าสู่ระบบสำเร็จ
+    saveLog("LOGIN_SUCCESS", email, req, { faculty: user.faculty });
 
     const token = jwt.sign(
       { userId: user._id, email: user.email },
@@ -318,7 +345,11 @@ app.post("/vote", async (req, res) => {
     if (user.hasVoted) return res.status(403).json({ message: "คุณใช้สิทธิ์ไปแล้ว" });
 
     const isPinCorrect = await bcrypt.compare(votePin, user.votePin);
-    if (!isPinCorrect) return res.status(401).json({ message: "รหัสโหวตไม่ถูกต้อง" });
+    if (!isPinCorrect) {
+        // ✅ Log: บันทึกการใส่ PIN ผิด (อาจจะเป็นคนอื่นพยายามใช้สิทธิ์)
+        saveLog("VOTE_FAILED_PIN", email, req, { candidateId });
+        return res.status(401).json({ message: "รหัสโหวตไม่ถูกต้อง" });
+    }
 
     const candidate = await db.collection("candidates").findOne({ candidateId });
     if (!candidate) return res.status(404).json({ message: "ไม่พบผู้สมัคร" });
@@ -331,6 +362,9 @@ app.post("/vote", async (req, res) => {
       { candidateId },
       { $inc: { votes: 1 } }
     );
+
+    // ✅ Log: บันทึกการโหวตสำเร็จ (หลักฐานสำคัญ)
+    saveLog("VOTE_SUBMIT", email, req, { candidateId });
 
     res.json({ message: "โหวตสำเร็จ" });
   } catch (err) {
@@ -356,6 +390,20 @@ app.get("/stats/vote-summary", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ✅ Route พิเศษสำหรับ Admin: ดู Log 100 รายการล่าสุด
+app.get("/admin/logs", async (req, res) => {
+    try {
+        const logs = await db.collection("audit_logs")
+            .find({})
+            .sort({ timestamp: -1 })
+            .limit(100)
+            .toArray();
+        res.json(logs);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 // =======================
