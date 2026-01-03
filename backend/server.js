@@ -1,18 +1,18 @@
-console.log("🔥 SERVER STARTED: KUVote System 🔥");
+console.log("🔥 SERVER STARTED: KUVote System (API Mode) 🔥");
 require("dotenv").config();
 
 const express = require("express");
 const { MongoClient, ObjectId } = require("mongodb");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
-const nodemailer = require("nodemailer");
 const jwt = require("jsonwebtoken");
+// const nodemailer = require("nodemailer"); // ❌ ไม่ใช้แล้ว (Comment ออกหรือลบได้เลย)
 
 const app = express();
 
-// ตั้งค่า CORS (อนุญาตให้ Frontend เข้าถึง)
+// ตั้งค่า CORS
 app.use(cors({
-    origin: "*", // หรือระบุโดเมนเจาะจง เช่น process.env.FRONTEND_URL
+    origin: "*", 
     methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true
 }));
@@ -25,7 +25,6 @@ app.use(express.json());
 const client = new MongoClient(process.env.MONGO_URI);
 let db;
 
-// ✅ Ensure TTL index (ลบ User ที่ไม่ยืนยันตัวตนภายใน 10 นาที)
 async function ensureTTLIndex() {
   try {
     const collection = db.collection("users");
@@ -68,63 +67,75 @@ async function connectDB() {
     await ensureTTLIndex();
   } catch (err) {
     console.error("❌ MongoDB Connection FAILED:", err.message);
-    process.exit(1); // ปิด Server ถ้าต่อ DB ไม่ได้
+    process.exit(1); 
   }
 }
 connectDB();
 
 // =======================
-// Mail Configuration (Brevo Port 2525 Fix)
+// ✅ Mail Function (Brevo API) - ทางแก้ปัญหา Timeout
 // =======================
-const transporter = nodemailer.createTransport({
-  host: "185.107.232.161",
-  port: 465,             // ลองเปลี่ยนเป็น 465
-  secure: true,          // ⚠️ ต้องแก้เป็น true
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  // ...
-});
-
-// 🔥 [DEBUG] ตรวจสอบการเชื่อมต่อ Gmail ทันทีที่เริ่ม Server
-transporter.verify((error, success) => {
-  if (error) {
-    console.error("---------------------------------------------------");
-    console.error("❌ [MAIL ERROR] ไม่สามารถเชื่อมต่อกับ Gmail ได้");
-    console.error("สาเหตุ:", error.message);
-    console.error("คำแนะนำ: เช็ค EMAIL_USER และ EMAIL_PASS ใน Render Environment Variables");
-    console.error("---------------------------------------------------");
-  } else {
-    console.log("✅ [MAIL READY] ระบบส่งอีเมลพร้อมใช้งาน (Logged in as " + process.env.EMAIL_USER + ")");
+async function sendEmailViaBrevo(toEmail, subject, htmlContent) {
+  // เช็คว่ามี API Key หรือยัง
+  if (!process.env.BREVO_API_KEY) {
+      throw new Error("❌ ไม่พบ BREVO_API_KEY ใน Environment Variables");
   }
-});
+
+  // ส่ง request ไปที่ Brevo API โดยตรง (ไม่ผ่าน SMTP Port)
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "accept": "application/json",
+      "api-key": process.env.BREVO_API_KEY, // ต้องตั้งค่าใน Render
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      sender: { 
+        name: "KUVote System", 
+        email: process.env.EMAIL_USER || "no-reply@kuvote.com" // ใช้อีเมลที่ยืนยันกับ Brevo
+      },
+      to: [{ email: toEmail }],
+      subject: subject,
+      htmlContent: htmlContent
+    })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Brevo API Error: ${errorText}`);
+  }
+  
+  console.log("✅ [API SUCCESS] Email sent via Brevo API");
+}
 
 // =======================
 // Routes
 // =======================
 
 app.get("/", (req, res) => {
-  res.send("🚀 KUVote API Server is Running!");
+  res.send("🚀 KUVote API Server is Running (API Mode)!");
+});
+
+// ✅ Health Check Route (สำหรับ Render)
+app.get("/healthz", (req, res) => {
+    res.status(200).send("OK");
 });
 
 // =======================
-// 1. Register Users (With Rollback System)
+// 1. Register Users
 // =======================
 app.post("/register/users", async (req, res) => {
-  let insertedId = null; // ตัวแปรสำหรับเก็บ ID เพื่อใช้ลบย้อนหลัง
+  let insertedId = null; 
 
   try {
     const { email, faculty, loginPassword, votePin } = req.body;
-    console.log(`📥 [REGISTER] New request: ${email}`);
+    console.log(`📥 [REGISTER] Request for: ${email}`);
 
-    // 1. ตรวจสอบว่ามีอีเมลนี้หรือยัง
+    // 1. ตรวจสอบ User ซ้ำ
     const existingUser = await db.collection("users").findOne({ email });
     if (existingUser) {
-        // ถ้ามี user อยู่แล้ว แต่ยังไม่ยืนยันตัวตน (เกินเวลา TTL) ให้แจ้งว่าซ้ำ หรือจะลบอันเก่าก็ได้
         if (!existingUser.isVerified) {
-             // ทางเลือก: แจ้งให้ไปยืนยันเมล หรือลบอันเก่าทิ้งแล้วสมัครใหม่ (ในที่นี้แจ้งซ้ำก่อน)
-             return res.status(409).json({ message: "อีเมลนี้ลงทะเบียนแล้ว กรุณาตรวจสอบอีเมลเพื่อยืนยันตัวตน" });
+             return res.status(409).json({ message: "อีเมลนี้ลงทะเบียนแล้ว แต่ยังไม่ยืนยันตัวตน (กรุณารอ 10 นาทีหรือตรวจสอบอีเมล)" });
         }
         return res.status(409).json({ message: "อีเมลนี้ถูกใช้งานแล้ว" });
     }
@@ -133,7 +144,7 @@ app.post("/register/users", async (req, res) => {
     const hashedPassword = await bcrypt.hash(loginPassword, 10);
     const hashedPin = await bcrypt.hash(votePin, 10);
 
-    // 3. บันทึกลง Database
+    // 3. Insert DB
     const result = await db.collection("users").insertOne({
       email,
       faculty,
@@ -144,21 +155,21 @@ app.post("/register/users", async (req, res) => {
       createdAt: new Date(),
     });
 
-    insertedId = result.insertedId; // ✅ จำ ID ไว้
-    console.log(`✅ [DB] User inserted with ID: ${insertedId}`);
+    insertedId = result.insertedId;
+    console.log(`✅ [DB] Inserted User ID: ${insertedId}`);
 
-    // 4. สร้าง Token และ Link
+    // 4. Generate Link
     const verifyToken = jwt.sign(
       { userId: insertedId },
       process.env.JWT_SECRET,
       { expiresIn: "10m" }
     );
     
-    // ตรวจสอบ FRONTEND_URL ว่ามี Slash ปิดท้ายไหม ถ้ามีให้เอาออก
+    // จัดการ URL ให้สวยงาม (เอา Slash ท้ายออก)
     const frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, "") : "http://localhost:3000";
     const verifyLink = `${frontendUrl}/verify-email/${verifyToken}`;
 
-    // 5. เตรียม HTML Email
+    // 5. Prepare HTML
     const emailHtml = `
       <div style="font-family: sans-serif; background-color: #f4f4f5; padding: 40px;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
@@ -169,36 +180,30 @@ app.post("/register/users", async (req, res) => {
             <h2>ยืนยันการลงทะเบียน</h2>
             <p>กรุณากดปุ่มด้านล่างเพื่อยืนยันอีเมลของคุณ (ลิงก์หมดอายุใน 10 นาที)</p>
             <a href="${verifyLink}" style="display: inline-block; background-color: #10B981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; margin: 20px 0;">ยืนยันอีเมลทันที</a>
-            <p style="font-size: 12px; color: #666;">หากคลิกปุ่มไม่ได้ ให้คลิกลิงก์นี้: <a href="${verifyLink}">${verifyLink}</a></p>
+            <p style="font-size: 12px; color: #666; margin-top: 20px;">หากปุ่มไม่ทำงาน: ${verifyLink}</p>
           </div>
         </div>
       </div>
     `;
 
-    // 6. 🔥 พยายามส่งอีเมล
-    console.log("⏳ [MAIL] Sending email...");
-    await transporter.sendMail({
-      from: `"KUVote System" <${process.env.EMAIL_USER}>`,
-      to: email,
-      subject: "ยืนยันอีเมลของคุณ - KUVote",
-      html: emailHtml,
-    });
+    // 6. 🔥 ส่งอีเมลด้วย API (แก้ปัญหา Timeout)
+    console.log("⏳ [MAIL] Sending email via Brevo API...");
+    await sendEmailViaBrevo(email, "ยืนยันอีเมลของคุณ - KUVote", emailHtml);
 
-    console.log("✅ [MAIL] Email sent successfully!");
     res.status(201).json({ message: "สมัครสำเร็จ กรุณาตรวจสอบอีเมลเพื่อยืนยันตัวตน" });
 
   } catch (err) {
     console.error("❌ [REGISTER ERROR]:", err.message);
 
-    // 🔥 ROLLBACK SYSTEM: ถ้าพัง (โดยเฉพาะส่งเมลไม่ผ่าน) ให้ลบข้อมูลทิ้ง
+    // 🔥 Rollback System
     if (insertedId) {
-        console.log("🧹 [ROLLBACK] Deleting user due to registration failure...");
+        console.log("🧹 [ROLLBACK] Deleting user due to failure...");
         await db.collection("users").deleteOne({ _id: insertedId });
-        console.log("   -> User deleted. Can try again.");
+        console.log("   -> User deleted.");
     }
 
     res.status(500).json({ 
-        error: "เกิดข้อผิดพลาดในการสมัครสมาชิก (ระบบอาจส่งอีเมลไม่สำเร็จ)",
+        error: "เกิดข้อผิดพลาดในการสมัครสมาชิก (ระบบส่งอีเมลขัดข้อง)",
         details: err.message 
     });
   }
@@ -217,7 +222,7 @@ app.get("/verify-email/:token", async (req, res) => {
     );
 
     if (result.matchedCount === 0) {
-      return res.status(400).send("<h1>❌ ไม่สำเร็จ</h1><p>ลิงก์นี้ถูกใช้ไปแล้ว หรือหมดอายุ</p>");
+      return res.status(400).send("<h1>❌ ไม่สำเร็จ</h1><p>บัญชีถูกยืนยันไปแล้ว หรือลิงก์หมดอายุ</p>");
     }
 
     res.send("<h1>🎉 ยืนยันสำเร็จ!</h1><p>กลับไปหน้า Login ได้เลย</p>");
@@ -267,7 +272,6 @@ app.post("/login", async (req, res) => {
 // =======================
 // 4. Candidates & Voting
 // =======================
-
 async function getNextCandidateId() {
   const result = await db.collection("counters").findOneAndUpdate(
     { _id: "candidateId" },
@@ -319,7 +323,6 @@ app.post("/vote", async (req, res) => {
     const candidate = await db.collection("candidates").findOne({ candidateId });
     if (!candidate) return res.status(404).json({ message: "ไม่พบผู้สมัคร" });
 
-    // Update Transaction (Manual)
     await db.collection("users").updateOne(
       { email },
       { $set: { hasVoted: true, votedCandidate: candidateId } }
