@@ -74,17 +74,18 @@ async function connectDB() {
 connectDB();
 
 // =======================
-// Mail Configuration (Brevo/Sendinblue) ✅ ทางแก้สุดท้าย
+// Mail Configuration (Brevo Port 2525 Fix)
 // =======================
 const transporter = nodemailer.createTransport({
-  host: "185.107.232.161", // เปลี่ยน Host เป็นของ Brevo
-  port: 587,                    // ใช้ Port 587
-  secure: false,                // ต้องเป็น false
+  host: "185.107.232.161",  // ใช้ IP ตรงๆ ที่เราแก้เมื่อกี้ (หรือจะลอง smtp-relay.brevo.com ก็ได้ถ้าบน Render)
+  port: 2525,               // 🔥 เปลี่ยนจาก 587 เป็น 2525 (พระเอกของเรา)
+  secure: false,            // Port 2525 ใช้ secure: false เหมือน 587
   auth: {
-    user: process.env.EMAIL_USER, // อีเมล Login Brevo
-    pass: process.env.EMAIL_PASS, // SMTP Key จาก Brevo
+    user: process.env.EMAIL_USER, 
+    pass: process.env.EMAIL_PASS, 
   },
-  // เพิ่ม Debug เพื่อความชัวร์
+  // เพิ่ม Timeout ให้ยาวขึ้นอีกนิด
+  connectionTimeout: 20000, 
   logger: true,
   debug: true
 });
