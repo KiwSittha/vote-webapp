@@ -1,7 +1,10 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState,useEffect } from "react";
 
 export default function Login() {
+  useEffect(() => {
+    document.title = "เข้าสู่ระบบ | KUVote"; // 2. กำหนดชื่อที่ต้องการ
+  }, []);
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
