@@ -19,7 +19,7 @@ export default function Vote() {
 
   const fetchCandidates = async () => {
     try {
-      const response = await fetch("http://localhost:8000/candidates");
+      const response = await fetch("https://vote-webapp.onrender.com/candidates");
       if (!response.ok) throw new Error("ดึงข้อมูลไม่สำเร็จ");
       const data = await response.json();
       setCandidates(data);
@@ -68,7 +68,7 @@ export default function Vote() {
         const token = localStorage.getItem("token");
         
         // ยิง API ไปที่ Backend
-        const response = await fetch("http://localhost:8000/vote", {
+        const response = await fetch("https://vote-webapp.onrender.com/vote", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

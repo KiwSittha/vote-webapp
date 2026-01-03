@@ -26,14 +26,14 @@ function Dashboard() {
 
   // Fetch logic
   useEffect(() => {
-    fetch("http://localhost:8000/candidates")
+    fetch("https://vote-webapp.onrender.com/candidates")
       .then((res) => res.json())
       .then((data) => setCandidates(data))
       .catch((err) => console.error(err));
   }, []);
 
   useEffect(() => {
-    fetch("http://localhost:8000/stats/vote-summary")
+    fetch("https://vote-webapp.onrender.com/stats/vote-summary")
       .then((res) => res.json())
       .then((data) => setVoteSummary(data))
       .catch((err) => console.error(err));
