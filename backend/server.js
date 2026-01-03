@@ -361,43 +361,51 @@ app.put("/user/change-password", async (req, res) => {
 app.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await db.collection("users").findOne({ email });
 
-    if (!user) {
-      // เพื่อความปลอดภัย เราจะไม่บอกว่า "ไม่มีอีเมลนี้" (ป้องกัน Hacker สุ่มอีเมล)
-      // แต่จะบอกกว้างๆ หรือแกล้งทำว่าสำเร็จ
-      return res.json({ message: "หากอีเมลนี้มีในระบบ เราได้ส่งลิงก์รีเซ็ตรหัสผ่านให้แล้ว" });
+    // 1. ตรวจสอบรูปแบบอีเมล (Backend Validation)
+    if (!email || !email.trim().toLowerCase().endsWith("@ku.th")) {
+        return res.status(400).json({ message: "กรุณาใช้อีเมลมหาวิทยาลัย (@ku.th) เท่านั้น" });
     }
 
-    // 1. สร้าง Token สำหรับรีเซ็ต (อายุ 15 นาที)
-    // เราใช้ loginPassword เดิมเป็นส่วนหนึ่งของ Secret เพื่อให้ Token เก่าใช้ไม่ได้ทันทีที่เปลี่ยนรหัสเสร็จ
+    // 2. ค้นหา User ในระบบ
+    const user = await db.collection("users").findOne({ email: email.trim().toLowerCase() });
+
+    // ❌ ถ้าไม่เจอ ให้บอกไปเลยว่า "ไม่พบอีเมล" (ตามที่คุณต้องการ)
+    if (!user) {
+      // Log การพยายามขอรีเซ็ตผิดคน
+      saveLog("FORGOT_PASSWORD_FAILED", email, req, { reason: "User not found" });
+      return res.status(404).json({ message: "ไม่พบอีเมลนี้ในระบบ กรุณาตรวจสอบความถูกต้อง" });
+    }
+
+    // 3. สร้าง Token สำหรับรีเซ็ต (อายุ 15 นาที)
     const secret = process.env.JWT_SECRET + user.loginPassword;
     const token = jwt.sign({ userId: user._id, email: user.email }, secret, { expiresIn: "15m" });
 
-    // 2. สร้างลิงก์ (Frontend Route)
+    // 4. สร้างลิงก์
     const frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, "") : "http://localhost:3000";
     const resetLink = `${frontendUrl}/reset-password/${user._id}/${token}`;
 
-    // 3. HTML Email
+    // 5. HTML Email
     const emailHtml = `
       <div style="font-family: sans-serif; padding: 20px;">
         <h2>รีเซ็ตรหัสผ่าน (Reset Password)</h2>
-        <p>คุณได้ทำการร้องขอเพื่อเปลี่ยนรหัสผ่านสำหรับบัญชี: ${email}</p>
+        <p>คุณได้ทำการร้องขอเพื่อเปลี่ยนรหัสผ่านสำหรับบัญชี: ${user.email}</p>
         <p>กรุณากดลิงก์ด้านล่างเพื่อตั้งรหัสผ่านใหม่ (ลิงก์มีอายุ 15 นาที):</p>
         <a href="${resetLink}" style="background-color: #DC2626; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">ตั้งรหัสผ่านใหม่</a>
         <p style="margin-top: 20px; color: #666; font-size: 12px;">หากคุณไม่ได้ทำรายการนี้ โปรดเพิกเฉยต่ออีเมลฉบับนี้</p>
       </div>
     `;
 
-    // 4. ส่งอีเมล
-    await sendEmailViaBrevo(email, "รีเซ็ตรหัสผ่าน - KUVote", emailHtml);
+    // 6. ส่งอีเมล
+    await sendEmailViaBrevo(user.email, "รีเซ็ตรหัสผ่าน - KUVote", emailHtml);
     
-    // Log
-    saveLog("FORGOT_PASSWORD_REQUEST", email, req);
+    // Log สำเร็จ
+    saveLog("FORGOT_PASSWORD_REQUEST", user.email, req);
 
     res.json({ message: "ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมลเรียบร้อยแล้ว" });
 
   } catch (err) {
+    console.error("Forgot Password Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
