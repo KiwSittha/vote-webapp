@@ -74,20 +74,17 @@ async function connectDB() {
 connectDB();
 
 // =======================
-// Mail Configuration (Gmail) - Port 465 Fix
+// Mail Configuration (Brevo/Sendinblue) ✅ ทางแก้สุดท้าย
 // =======================
 const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,               // 👈 เปลี่ยนเป็น 465
-  secure: true,            // 👈 ต้องเป็น true สำหรับ Port 465
+  host: "smtp-relay.brevo.com", // เปลี่ยน Host เป็นของ Brevo
+  port: 587,                    // ใช้ Port 587
+  secure: false,                // ต้องเป็น false
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: process.env.EMAIL_USER, // อีเมล Login Brevo
+    pass: process.env.EMAIL_PASS, // SMTP Key จาก Brevo
   },
-  // เพิ่ม timeout ให้ยาวขึ้นเผื่อ Network ช้า
-  connectionTimeout: 10000, 
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
+  // เพิ่ม Debug เพื่อความชัวร์
   logger: true,
   debug: true
 });
