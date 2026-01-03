@@ -8,13 +8,27 @@ export default function ForgotPassword() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // ✅ 1. ตรวจสอบอีเมล @ku.th ก่อน
+    const emailValue = email.trim().toLowerCase();
+    if (!emailValue.endsWith("@ku.th")) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'รูปแบบอีเมลไม่ถูกต้อง',
+        text: 'กรุณาใช้อีเมลมหาวิทยาลัย (@ku.th) เท่านั้น',
+        confirmButtonColor: '#ef4444'
+      });
+      return; // หยุดการทำงาน ไม่ส่งไป Server
+    }
+
     setLoading(true);
 
     try {
+      // ✅ ส่ง emailValue ที่ตัดช่องว่างและทำตัวเล็กแล้วไป
       const res = await fetch("https://vote-webapp.onrender.com/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email: emailValue }),
       });
 
       const data = await res.json();
@@ -58,14 +72,23 @@ export default function ForgotPassword() {
         <form onSubmit={handleSubmit} className="space-y-6">
             <div>
                 <label className="text-sm font-semibold text-slate-700 ml-1">อีเมลมหาวิทยาลัย</label>
-                <input
-                    type="email"
-                    required
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 mt-1"
-                    placeholder="example@ku.th"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                />
+                <div className="relative">
+                    <input
+                        type="email"
+                        required
+                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 mt-1 pl-10"
+                        placeholder="example@ku.th"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                    />
+                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none mt-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-slate-400">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                        </svg>
+                    </div>
+                </div>
+                {/* ข้อความช่วยเตือน */}
+                <p className="text-[10px] text-slate-400 ml-1 mt-1">ต้องลงท้ายด้วย @ku.th เท่านั้น</p>
             </div>
 
             <button
