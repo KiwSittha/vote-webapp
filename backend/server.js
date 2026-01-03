@@ -74,20 +74,22 @@ async function connectDB() {
 connectDB();
 
 // =======================
-// Mail Configuration (Gmail)
+// Mail Configuration (Gmail) - Port 465 Fix
 // =======================
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 587,
-  secure: false, // ต้องเป็น false สำหรับ port 587
+  port: 465,               // 👈 เปลี่ยนเป็น 465
+  secure: true,            // 👈 ต้องเป็น true สำหรับ Port 465
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  // 🔥 ลบ ciphers SSLv3 ออก เพราะมันเก่าเกินไป Google ไม่รับ
-  // แต่ใส่ debug: true เพื่อดู log ละเอียด
+  // เพิ่ม timeout ให้ยาวขึ้นเผื่อ Network ช้า
+  connectionTimeout: 10000, 
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
   logger: true,
-  debug: true 
+  debug: true
 });
 
 // 🔥 [DEBUG] ตรวจสอบการเชื่อมต่อ Gmail ทันทีที่เริ่ม Server
