@@ -3,6 +3,8 @@ import { Routes, Route } from "react-router-dom";
 
 import Login from "./Login";
 import Register from "./Register";
+import ForgotPassword from "./ForgotPassword";
+import ResetPassword from "./ResetPassword";
 import Dashboard from "./Dashboard";
 import VerifyEmail from "./VerifyEmail";
 import Home from "./Home";
@@ -18,7 +20,9 @@ function App() {
       <Route path="/" element={<Home />} />
       <Route path="/register" element={<Register />} />
       <Route path="/verify-email/:token" element={<VerifyEmail />} />
-
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password/:id/:token" element={<ResetPassword />} />
+      
       {/* --- 🔒 หน้าที่ต้อง Login ก่อนถึงจะเข้าได้ (Protected) --- */}
       <Route 
         path="/dashboard" 

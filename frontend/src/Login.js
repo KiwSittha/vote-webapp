@@ -50,7 +50,7 @@ export default function Login() {
       {/* ================= Main Card ================= */}
       <div className="relative z-10 bg-white/95 w-full max-w-[420px] p-6 md:p-10 rounded-3xl shadow-2xl shadow-green-900/20 border border-white/50 backdrop-blur-xl animate-fade-in-up">
         
-        {/* ปุ่มย้อนกลับหน้าแรก (เพิ่มใหม่) */}
+        {/* ปุ่มย้อนกลับหน้าแรก */}
         <Link to="/" className="absolute top-4 left-4 text-slate-400 hover:text-emerald-600 transition-colors p-2 rounded-full hover:bg-slate-100">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -121,6 +121,16 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
+
+            {/* ✅ เพิ่มปุ่มลืมรหัสผ่านตรงนี้ */}
+            <div className="flex justify-end pt-1">
+                <Link 
+                    to="/forgot-password" 
+                    className="text-xs font-medium text-slate-500 hover:text-emerald-600 transition-colors"
+                >
+                    ลืมรหัสผ่าน?
+                </Link>
+            </div>
           </div>
 
           {/* Submit Button */}
@@ -129,7 +139,7 @@ export default function Login() {
             disabled={loading}
             className={`
               w-full py-3.5 px-4 rounded-xl text-white font-bold text-base md:text-lg shadow-lg shadow-emerald-200/50
-              transition-all duration-300 transform
+              transition-all duration-300 transform mt-2
               ${loading 
                 ? "bg-slate-400 cursor-not-allowed" 
                 : "bg-gradient-to-r from-emerald-600 to-green-500 hover:from-emerald-500 hover:to-green-400 hover:-translate-y-1 hover:shadow-xl"

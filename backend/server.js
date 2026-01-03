@@ -308,6 +308,174 @@ async function getNextCandidateId() {
   return result.value.seq;
 }
 
+// =======================
+// 5. Change Password
+// =======================
+app.put("/user/change-password", async (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"];
+    const token = authHeader && authHeader.split(" ")[1]; // ดึง Bearer token
+
+    if (!token) return res.status(401).json({ message: "No token provided" });
+
+    // 1. แกะ Token หา User ID
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.userId;
+
+    const { currentPassword, newPassword } = req.body;
+
+    // 2. หา User ใน DB
+    const user = await db.collection("users").findOne({ _id: new ObjectId(userId) });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // 3. เช็คว่า "รหัสผ่านเดิม" ถูกต้องไหม
+    const isMatch = await bcrypt.compare(currentPassword, user.loginPassword);
+    if (!isMatch) {
+      // ❌ Log: พยายามเปลี่ยนรหัสแต่ใส่รหัสเก่าผิด
+      saveLog("CHANGE_PASSWORD_FAILED", user.email, req, { reason: "Wrong current password" });
+      return res.status(400).json({ message: "รหัสผ่านปัจจุบันไม่ถูกต้อง" });
+    }
+
+    // 4. แฮชรหัสผ่านใหม่
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+    // 5. อัปเดตลง DB
+    await db.collection("users").updateOne(
+      { _id: new ObjectId(userId) },
+      { $set: { loginPassword: hashedNewPassword } }
+    );
+
+    // ✅ Log: เปลี่ยนรหัสสำเร็จ
+    saveLog("CHANGE_PASSWORD_SUCCESS", user.email, req);
+
+    res.json({ message: "เปลี่ยนรหัสผ่านสำเร็จ" });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =======================
+// 6. Forgot Password (Request Link)
+// =======================
+app.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await db.collection("users").findOne({ email });
+
+    if (!user) {
+      // เพื่อความปลอดภัย เราจะไม่บอกว่า "ไม่มีอีเมลนี้" (ป้องกัน Hacker สุ่มอีเมล)
+      // แต่จะบอกกว้างๆ หรือแกล้งทำว่าสำเร็จ
+      return res.json({ message: "หากอีเมลนี้มีในระบบ เราได้ส่งลิงก์รีเซ็ตรหัสผ่านให้แล้ว" });
+    }
+
+    // 1. สร้าง Token สำหรับรีเซ็ต (อายุ 15 นาที)
+    // เราใช้ loginPassword เดิมเป็นส่วนหนึ่งของ Secret เพื่อให้ Token เก่าใช้ไม่ได้ทันทีที่เปลี่ยนรหัสเสร็จ
+    const secret = process.env.JWT_SECRET + user.loginPassword;
+    const token = jwt.sign({ userId: user._id, email: user.email }, secret, { expiresIn: "15m" });
+
+    // 2. สร้างลิงก์ (Frontend Route)
+    const frontendUrl = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.replace(/\/$/, "") : "http://localhost:3000";
+    const resetLink = `${frontendUrl}/reset-password/${user._id}/${token}`;
+
+    // 3. HTML Email
+    const emailHtml = `
+      <div style="font-family: sans-serif; padding: 20px;">
+        <h2>รีเซ็ตรหัสผ่าน (Reset Password)</h2>
+        <p>คุณได้ทำการร้องขอเพื่อเปลี่ยนรหัสผ่านสำหรับบัญชี: ${email}</p>
+        <p>กรุณากดลิงก์ด้านล่างเพื่อตั้งรหัสผ่านใหม่ (ลิงก์มีอายุ 15 นาที):</p>
+        <a href="${resetLink}" style="background-color: #DC2626; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">ตั้งรหัสผ่านใหม่</a>
+        <p style="margin-top: 20px; color: #666; font-size: 12px;">หากคุณไม่ได้ทำรายการนี้ โปรดเพิกเฉยต่ออีเมลฉบับนี้</p>
+      </div>
+    `;
+
+    // 4. ส่งอีเมล
+    await sendEmailViaBrevo(email, "รีเซ็ตรหัสผ่าน - KUVote", emailHtml);
+    
+    // Log
+    saveLog("FORGOT_PASSWORD_REQUEST", email, req);
+
+    res.json({ message: "ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมลเรียบร้อยแล้ว" });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =======================
+// 7. Reset Password (Set New Password)
+// =======================
+app.post("/reset-password/:id/:token", async (req, res) => {
+  const { id, token } = req.params;
+  const { newPassword } = req.body;
+
+  try {
+    // 1. เช็คว่า User มีจริงไหม
+    const user = await db.collection("users").findOne({ _id: new ObjectId(id) });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // 2. ตรวจสอบ Token (ต้องใช้ Secret เดียวกับตอนสร้าง คือมี password เก่าผสม)
+    const secret = process.env.JWT_SECRET + user.loginPassword;
+    try {
+      jwt.verify(token, secret);
+    } catch (err) {
+      return res.status(400).json({ message: "ลิงก์หมดอายุ หรือไม่ถูกต้อง" });
+    }
+
+    // 3. เปลี่ยนรหัสผ่าน
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.collection("users").updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { loginPassword: hashedPassword } }
+    );
+
+    // Log
+    saveLog("RESET_PASSWORD_SUCCESS", user.email, req);
+
+    res.json({ message: "เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่" });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =======================
+// 7. Reset Password (Set New Password)
+// =======================
+app.post("/reset-password/:id/:token", async (req, res) => {
+  const { id, token } = req.params;
+  const { newPassword } = req.body;
+
+  try {
+    // 1. เช็คว่า User มีจริงไหม
+    const user = await db.collection("users").findOne({ _id: new ObjectId(id) });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    // 2. ตรวจสอบ Token (ต้องใช้ Secret เดียวกับตอนสร้าง คือมี password เก่าผสม)
+    const secret = process.env.JWT_SECRET + user.loginPassword;
+    try {
+      jwt.verify(token, secret);
+    } catch (err) {
+      return res.status(400).json({ message: "ลิงก์หมดอายุ หรือไม่ถูกต้อง" });
+    }
+
+    // 3. เปลี่ยนรหัสผ่าน
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.collection("users").updateOne(
+      { _id: new ObjectId(id) },
+      { $set: { loginPassword: hashedPassword } }
+    );
+
+    // Log
+    saveLog("RESET_PASSWORD_SUCCESS", user.email, req);
+
+    res.json({ message: "เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบใหม่" });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post("/candidate", async (req, res) => {
   try {
     const { name, faculty, position, policies } = req.body;

@@ -8,8 +8,14 @@ function Register() {
     email: "",
     faculty: "",
     loginPassword: "",
+    confirmPassword: "", // ✅ เพิ่ม State สำหรับยืนยันรหัสผ่าน
     votePin: "",
   });
+
+  // ✅ เพิ่ม State สำหรับจัดการการแสดง/ซ่อนรหัสผ่าน
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showVotePin, setShowVotePin] = useState(false);
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -26,10 +32,20 @@ function Register() {
   };
 
   const validateForm = () => {
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z]).{8,}$/;
+    // 1. ตรวจสอบอีเมล @ku.th
+    const emailValue = form.email.trim().toLowerCase();
+    if (!emailValue.endsWith("@ku.th")) {
+        return "กรุณาใช้อีเมลมหาวิทยาลัย (@ku.th) เท่านั้น";
+    }
 
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z]).{8,}$/;
     if (!passwordRegex.test(form.loginPassword)) {
       return "รหัสผ่านต้องมีอย่างน้อย 8 ตัว และมี A-Z และ a-z";
+    }
+
+    // ✅ เพิ่มการตรวจสอบว่ารหัสผ่านตรงกันหรือไม่
+    if (form.loginPassword !== form.confirmPassword) {
+      return "รหัสผ่านยืนยันไม่ตรงกับรหัสผ่านหลัก";
     }
 
     if (!/^\d{6}$/.test(form.votePin)) {
@@ -52,10 +68,13 @@ function Register() {
     }
 
     try {
+      // ตัด confirmPassword ออกก่อนส่งไป Backend (Backend ไม่ได้รับค่านี้)
+      const { confirmPassword, ...dataToSend } = form;
+
       const res = await fetch("https://vote-webapp.onrender.com/register/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...dataToSend, email: form.email.trim().toLowerCase() }),
       });
 
       const data = await res.json();
@@ -109,7 +128,7 @@ function Register() {
         {success && (
           <div className="mb-6 p-4 rounded-xl bg-emerald-50 border border-emerald-100 flex flex-col items-center justify-center text-center animate-bounce-in">
              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-2xl mb-2">
-                🎉
+               🎉
              </div>
              <h3 className="text-emerald-800 font-bold text-lg">ลงทะเบียนสำเร็จ!</h3>
              <p className="text-emerald-600 text-sm mt-1">{success}</p>
@@ -147,9 +166,12 @@ function Register() {
                   placeholder="ex. somchai.j@ku.th"
                   value={form.email}
                   onChange={handleChange}
+                  pattern=".*@ku\.th$"
+                  title="ต้องใช้อีเมล @ku.th เท่านั้น"
                   className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-slate-800 text-sm md:text-base"
                 />
               </div>
+              <p className="text-[10px] text-slate-400 ml-1">ต้องลงท้ายด้วย @ku.th เท่านั้น</p>
             </div>
 
             {/* 2. Faculty */}
@@ -175,7 +197,6 @@ function Register() {
                   <option value="วิทยาศาสตร์">คณะวิทยาศาสตร์</option>
                   <option value="วิศวกรรมศาสตร์">คณะวิศวกรรมศาสตร์</option>
                 </select>
-                {/* Custom Arrow Icon */}
                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4 text-slate-400">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
@@ -184,7 +205,7 @@ function Register() {
               </div>
             </div>
 
-            {/* 3. Password */}
+            {/* 3. Password (Login) */}
             <div className="space-y-1">
               <label className="text-sm font-semibold text-slate-700 ml-1">ตั้งรหัสผ่านเข้าสู่ระบบ</label>
               <div className="relative group">
@@ -195,18 +216,72 @@ function Register() {
                 </div>
                 <input
                   name="loginPassword"
-                  type="password"
+                  type={showPassword ? "text" : "password"} // ✅ เปลี่ยน type ได้
                   placeholder="ขั้นต่ำ 8 ตัวอักษร (A-Z, a-z)"
                   value={form.loginPassword}
                   onChange={handleChange}
                   required
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-slate-800 placeholder:text-slate-400 text-sm md:text-base"
+                  className="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-slate-800 placeholder:text-slate-400 text-sm md:text-base"
                 />
+                
+                {/* ✅ ปุ่มรูปตาแสดง/ซ่อนรหัส */}
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-emerald-600 focus:outline-none"
+                >
+                  {showPassword ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" />
+                      <path fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 010-1.113zM17.25 12a5.25 5.25 0 11-10.5 0 5.25 5.25 0 0110.5 0z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                      <path d="M3.53 2.47a.75.75 0 00-1.06 1.06l18 18a.75.75 0 101.06-1.06l-18-18zM22.676 12.553a11.249 11.249 0 01-2.631 4.31l-3.099-3.099a5.25 5.25 0 00-6.71-6.71L7.759 4.577a11.217 11.217 0 014.242-.827c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113z" />
+                      <path d="M15.75 12c0 .18-.013.357-.037.53l-4.244-4.243A3.75 3.75 0 0115.75 12zM12.53 15.713l-4.243-4.244a3.75 3.75 0 004.243 4.243z" />
+                      <path d="M6.75 12c0-.619.107-1.213.304-1.764l-3.1-3.1a11.25 11.25 0 00-2.63 4.31c-.12.362-.12.752 0 1.114 1.489 4.467 5.702 7.69 10.675 7.69 1.5 0 2.933-.294 4.242-.827l-2.477-2.477A5.25 5.25 0 016.75 12z" />
+                    </svg>
+                  )}
+                </button>
               </div>
               <p className="text-xs text-slate-400 ml-1">* ต้องมีตัวพิมพ์ใหญ่และพิมพ์เล็กอย่างน้อย 1 ตัว</p>
             </div>
 
-            {/* 4. Vote Pin */}
+            {/* ✅ 3.5 Confirm Password (เพิ่มใหม่) */}
+            <div className="space-y-1">
+              <label className="text-sm font-semibold text-slate-700 ml-1">ยืนยันรหัสผ่าน</label>
+              <div className="relative group">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <input
+                  name="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  placeholder="กรอกรหัสผ่านอีกครั้ง"
+                  value={form.confirmPassword}
+                  onChange={handleChange}
+                  required
+                  className="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-slate-800 placeholder:text-slate-400 text-sm md:text-base"
+                />
+                
+                {/* ปุ่มรูปตา */}
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-emerald-600 focus:outline-none"
+                >
+                  {showConfirmPassword ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" /><path fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 010-1.113zM17.25 12a5.25 5.25 0 11-10.5 0 5.25 5.25 0 0110.5 0z" clipRule="evenodd" /></svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.53 2.47a.75.75 0 00-1.06 1.06l18 18a.75.75 0 101.06-1.06l-18-18zM22.676 12.553a11.249 11.249 0 01-2.631 4.31l-3.099-3.099a5.25 5.25 0 00-6.71-6.71L7.759 4.577a11.217 11.217 0 014.242-.827c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113z" /><path d="M15.75 12c0 .18-.013.357-.037.53l-4.244-4.243A3.75 3.75 0 0115.75 12zM12.53 15.713l-4.243-4.244a3.75 3.75 0 004.243 4.243z" /><path d="M6.75 12c0-.619.107-1.213.304-1.764l-3.1-3.1a11.25 11.25 0 00-2.63 4.31c-.12.362-.12.752 0 1.114 1.489 4.467 5.702 7.69 10.675 7.69 1.5 0 2.933-.294 4.242-.827l-2.477-2.477A5.25 5.25 0 016.75 12z" /></svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* 4. Vote Pin (แก้เป็น type password + ปุ่มดู) */}
             <div className="space-y-1">
               <label className="text-sm font-semibold text-slate-700 ml-1">ตั้งรหัส Vote PIN (6 หลัก)</label>
               <div className="relative group">
@@ -217,14 +292,27 @@ function Register() {
                 </div>
                 <input
                   name="votePin"
-                  type="text"
+                  type={showVotePin ? "text" : "password"} // ✅ เปลี่ยน type ได้
                   maxLength={6}
                   placeholder="สำหรับใช้ยืนยันตอนกดโหวต"
                   value={form.votePin}
                   onChange={handleChange}
                   required
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-slate-800 placeholder:text-slate-400 tracking-widest text-sm md:text-base"
+                  className="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all text-slate-800 placeholder:text-slate-400 tracking-widest text-sm md:text-base"
                 />
+
+                {/* ปุ่มรูปตา */}
+                <button
+                  type="button"
+                  onClick={() => setShowVotePin(!showVotePin)}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-emerald-600 focus:outline-none"
+                >
+                  {showVotePin ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z" /><path fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 010-1.113zM17.25 12a5.25 5.25 0 11-10.5 0 5.25 5.25 0 0110.5 0z" clipRule="evenodd" /></svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M3.53 2.47a.75.75 0 00-1.06 1.06l18 18a.75.75 0 101.06-1.06l-18-18zM22.676 12.553a11.249 11.249 0 01-2.631 4.31l-3.099-3.099a5.25 5.25 0 00-6.71-6.71L7.759 4.577a11.217 11.217 0 014.242-.827c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113z" /><path d="M15.75 12c0 .18-.013.357-.037.53l-4.244-4.243A3.75 3.75 0 0115.75 12zM12.53 15.713l-4.243-4.244a3.75 3.75 0 004.243 4.243z" /><path d="M6.75 12c0-.619.107-1.213.304-1.764l-3.1-3.1a11.25 11.25 0 00-2.63 4.31c-.12.362-.12.752 0 1.114 1.489 4.467 5.702 7.69 10.675 7.69 1.5 0 2.933-.294 4.242-.827l-2.477-2.477A5.25 5.25 0 016.75 12z" /></svg>
+                  )}
+                </button>
               </div>
             </div>
 
