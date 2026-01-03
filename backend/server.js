@@ -77,7 +77,7 @@ connectDB();
 // Mail Configuration (Brevo/Sendinblue) ✅ ทางแก้สุดท้าย
 // =======================
 const transporter = nodemailer.createTransport({
-  host: "smtp-relay.brevo.com", // เปลี่ยน Host เป็นของ Brevo
+  host: "185.107.232.161", // เปลี่ยน Host เป็นของ Brevo
   port: 587,                    // ใช้ Port 587
   secure: false,                // ต้องเป็น false
   auth: {
