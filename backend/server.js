@@ -114,7 +114,10 @@ connectDB();
 // =======================
 
 app.get("/", (req, res) => res.send("🚀 KUVote API is Running!"));
-app.get("/healthz", (req, res) => res.status(200).send("OK"));
+app.get("/healthz", (req, res) => {
+  console.log("🔔 Health Check Ping received at:", new Date().toLocaleString()); // เพิ่มบรรทัดนี้
+  res.status(200).send("OK");
+});
 
 // 1. Register
 app.post("/register/users", async (req, res) => {
