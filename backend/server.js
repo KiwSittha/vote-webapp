@@ -9,11 +9,15 @@ const jwt = require("jsonwebtoken");
 
 const app = express();
 
-// ตั้งค่า CORS
+// 1. นำเข้า cors
+const cors = require("cors");
+
+// 2. ตั้งค่า CORS ให้ถูกต้อง
 app.use(cors({
-    origin: "*", 
+    origin: "https://kuvote.vercel.app", // ✅ ระบุโดเมนของ Frontend ที่ใช้จริง
     methods: ["GET", "POST", "PUT", "DELETE"],
-    credentials: true
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"] // ✅ เพิ่มเพื่อให้รองรับการส่ง Token
 }));
 
 app.use(express.json());
